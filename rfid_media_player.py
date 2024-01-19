@@ -2,15 +2,19 @@ import RPi.GPIO as GPIO
 from pirc522 import RFID
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
+import os
+from dotenv import load_dotenv
 
 # Configura Spotipy con le tue credenziali
-sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id="3226a28c823c4a4785dc9993e8898da1",
-                                               client_secret="fdc50d8da06b48688017c9b6cdd6f26a",
+sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=os.getenv(CLIENT_ID),
+                                               client_secret=os.getenv(SECRET_ID),
                                                redirect_uri="http://localhost",
                                                scope="streaming user-library-read user-read-playback-state user-modify-playback-state",
                                                open_browser=False))
 
 sp_device_id="653505de96b5a2742cb24e59794b0bdc15024205"
+
+load_dotenv()
 
 def read_rfid():
     rdr = RFID()
