@@ -4,6 +4,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import os
 from dotenv import load_dotenv
+from time import sleep
 
 # Configura Spotipy con le tue credenziali
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=os.getenv(CLIENT_ID),
@@ -15,20 +16,20 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=os.getenv(CLIENT_ID),
 sp_device_id="653505de96b5a2742cb24e59794b0bdc15024205"
 
 load_dotenv()
-print('[press ctrl+c to end the script]')
+reader = RFID()
 
 def read_rfid():
-    rdr = RFID()
+    """ Legge la card rfid """
     print("In attesa del tag RFID...")
-    rdr.wait_for_tag()
-
-    (error, tag_type) = rdr.request()
+    reader.wait_for_tag()
+    keys = list()
+    error, tag_type = reader.request()
     if not error:
-        print("Tag rilevato!")
-        (error, uid) = rdr.anticoll()
-        keys = list()
+        error, uid = reader.anticoll()
         if not error:
-            return uid
+            print('New tag detected! UID: {}'.format(uid))
+            reader.stop_crypto() # always call this when done working key_read = False
+            sleep(0.1)
 
 def get_spotify_devices(sp):
     """ Restituisce un elenco di dispositivi disponibili su Spotify. """
@@ -41,7 +42,7 @@ def get_spotify_devices(sp):
 
 def play_track_on_device(track_uri):
     """ Riproduce una traccia su un dispositivo specifico. """
-    sp.start_playback(uris=[track_uri], sp_device_id)
+    sp.start_playback(uris=[track_uri], device_id=sp_device_id)
     sp.volume(10, sp_device_id)
 
 def main():
@@ -63,8 +64,8 @@ def main():
         GPIO.cleanup()
         print("Script interrotto")
 
-   finally:
-        GPIO.cleanup()
+    finally:
+        reader.cleanup() # Calls GPIO cleanup
 
 if __name__ == "__main__":
     main()
