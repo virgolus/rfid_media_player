@@ -39,7 +39,7 @@ def read_rfid():
             util.set_tag(uid)
             # Save authorization info (key A) to util. It doesn't call RFID.card_auth(), that's called when needed
             util.auth(reader.auth_a, [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF])
-            util.dump()
+            #util.dump()
             # Stop crypto
             util.deauth()
 
@@ -48,7 +48,7 @@ def read_rfid():
             return uid
 
 def get_spotify_devices():
-   """ Restituisce un elenco di dispositivi disponibili su Spotify. """
+    """ Restituisce un elenco di dispositivi disponibili su Spotify. """
     print("Dispositivi disponibili:")
     devices = sp.devices()
     print(json.dumps(devices, indent=1))
@@ -70,6 +70,7 @@ def play_track_on_device(track_uri, device):
     """ Riproduce una traccia su un dispositivo specifico. """
     print("Start playing track" + track_uri)
     sp.start_playback(uris=[track_uri], device_id=device)
+    sleep(2)
     sp.volume(30, sp_device_id)
 
 def main():
