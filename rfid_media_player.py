@@ -5,6 +5,7 @@ from spotipy.oauth2 import SpotifyOAuth
 import os
 from dotenv import load_dotenv
 from time import sleep
+import json
 
 load_dotenv()
 
@@ -27,7 +28,7 @@ def read_rfid():
     """ Legge la card rfid """
     print("In attesa del tag RFID...")
     reader.wait_for_tag()
-    keys = list()
+
     error, tag_type = reader.request()
     if not error:
         error, uid = reader.anticoll()
@@ -46,25 +47,34 @@ def read_rfid():
             sleep(0.1)
             return uid
 
-def get_spotify_devices(sp):
-    """ Restituisce un elenco di dispositivi disponibili su Spotify. """
-
+def get_spotify_devices():
+   """ Restituisce un elenco di dispositivi disponibili su Spotify. """
     print("Dispositivi disponibili:")
     devices = sp.devices()
-    print(devices)
-    for device in devices:
-        print(f"ID: {device['id']}, Nome: {device['name']}, Tipo: {device['type']}, Volume: {device['volume_percent']}%")
-    return devices['devices']
+    print(json.dumps(devices, indent=1))
 
-def play_track_on_device(track_uri):
+def get_spotify_target_device():
+    """ Restituisce l'id del device target """
+    print("Dispositivi disponibili:")
+    devices = sp.devices()
+    print(json.dumps(devices, indent=1))
+
+    data = json.loads(json.dumps(devices))
+
+    for item in data['devices']:
+        if item['name'] == os.getenv('DEVICE_NAME'):
+            print(item['id'])
+            return item['id']
+
+def play_track_on_device(track_uri, device):
     """ Riproduce una traccia su un dispositivo specifico. """
     print("Start playing track" + track_uri)
-    sp.start_playback(uris=[track_uri], device_id=sp_device_id)
+    sp.start_playback(uris=[track_uri], device_id=device)
     sp.volume(30, sp_device_id)
 
 def main():
 
-    #get_spotify_devices(sp)
+    get_spotify_devices()
 
     try:
         while True:
@@ -77,9 +87,12 @@ def main():
                     # Costruisci l'URI della traccia da riprodurre su Spotify
                     track_uri = f"spotify:track:{''.join(str(i) for i in uid)}"
 
+                    # Cerca il device target
+                    device_id = get_spotify_target_device()
+
                     # Riproduce la traccia su Spotify
                     track_uri = 'spotify:track:403vzOZN0tETDpvFipkNIL'
-                    play_track_on_device(track_uri)
+                    play_track_on_device(track_uri, device_id)
 
                     ui_old=uid
 
