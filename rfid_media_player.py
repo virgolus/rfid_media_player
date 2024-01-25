@@ -11,59 +11,75 @@ load_dotenv()
 
 # Configura Spotipy con le tue credenziali
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=os.getenv('CLIENT_ID'),
-                                               client_secret=os.getenv('CLIENT_SECRET'),
-                                               redirect_uri="http://localhost",
-                                               scope="streaming user-library-read user-read-playback-state user-modify-playback-state",
-                                               open_browser=False))
+                                                client_secret=os.getenv('CLIENT_SECRET'),
+                                                redirect_uri="http://localhost",
+                                                scope="streaming user-library-read user-read-playback-state user-modify-playback-state",
+                                                open_browser=False))
 
 sp_device_id=os.getenv('DEVICE_ID')
 
-reader = RFID()
-uid_old = ""
-util = reader.util()
-# Set util debug to true - it will print what's going on
-util.debug = True
+# Set rfid reader
+rdr = RFID()
+util = rdr.util()
+# util.debug = True
 
 def read_rfid():
-    """ Legge la card rfid """
-    print("In attesa del tag RFID...")
-    reader.wait_for_tag()
+    try:
+        print(f"Waiting for rfid tag")
 
-    error, tag_type = reader.request()
-    if not error:
-        error, uid = reader.anticoll()
-        if not error:
-            print('New tag detected! UID: {}'.format(uid))
+        tag_records = []
+        rdr.wait_for_tag()
 
-            # Set tag as used in util. This will call RFID.select_tag(uid)
-            util.set_tag(uid)
-            # Save authorization info (key A) to util. It doesn't call RFID.card_auth(), that's called when needed
-            util.auth(reader.auth_a, [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF])
-            #util.dump()
-            # Stop crypto
-            util.deauth()
+        (error, data) = rdr.request()
+        if not error: 
+            print("\nCard detected")
 
-            reader.stop_crypto() # always call this when done working key_read = False
-            sleep(0.1)
-            return uid
+            (error, uid) = rdr.anticoll()
+            if not error:
+                print("UID: " + str(uid))
+
+                # Seleziona la card con UID
+                if not rdr.select_tag(uid):
+                    # Leggi tutti i 16 settori (ognuno con 4 blocchi)
+                    for sector in range(16):
+                        # Prova a autenticare il settore
+                        if not rdr.card_auth(rdr.auth_b, sector * 4, [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF], uid):
+                            for block in range(4):
+                                block_addr = sector * 4 + block
+                                (error, data) = rdr.read(block_addr)
+                                if not error:
+                                    # Converti i dati in una stringa
+                                    data = bytes_to_utf8_string(data)
+                                    # print(f"Sector {sector}, Block {block}: {data}")
+
+                                    tag_records.append(data)
+                                #else:
+                                   # print(f"Errore durante la lettura del Blocco {block} del Settore {sector}")
+                        #else:
+                            #print(f"Non posso autenticare il Settore {sector}")
+                    return (str(uid), tag_records)
+                #else:
+                    #print("Non posso selezionare la card con UID: " + str(uid))
+    except TypeError:
+        print("TypeError")       
 
 def get_spotify_devices():
     """ Restituisce un elenco di dispositivi disponibili su Spotify. """
-    print("Dispositivi disponibili:")
+    #print("Dispositivi disponibili:")
     devices = sp.devices()
-    print(json.dumps(devices, indent=1))
+    #print(json.dumps(devices, indent=1))
 
 def get_spotify_target_device():
     """ Restituisce l'id del device target """
-    print("Dispositivi disponibili:")
+    #print("Dispositivi disponibili:")
     devices = sp.devices()
-    print(json.dumps(devices, indent=1))
+    #print(json.dumps(devices, indent=1))
 
     data = json.loads(json.dumps(devices))
 
     for item in data['devices']:
         if item['name'] == os.getenv('DEVICE_NAME'):
-            print(item['id'])
+            #print(item['id'])
             return item['id']
 
 def play_track_on_device(track_uri, device):
@@ -73,37 +89,77 @@ def play_track_on_device(track_uri, device):
     sleep(2)
     sp.volume(30, sp_device_id)
 
+def bytes_to_utf8_string(byte_data):
+    """ Rimuovi i byte nulli dalla fine dei dati """
+    clean_data = bytes(byte for byte in byte_data if 32 <= byte <= 126)
+    try:
+        # Decodifica i dati usando UTF-8
+        clean_data = clean_data.decode('utf-8').rstrip('\x00')
+
+        # Pulisci schifezze
+        clean_data = clean_data.replace("QTen", "")
+        clean_data = clean_data.replace("Ten", "")
+
+        return clean_data
+    except UnicodeDecodeError:
+        return "Errore nella decodifica UTF-8"
+
+def get_uri_from_rfid_tag(tag_records):
+    track_uri = ""
+    #print(tag_records)
+    sequence = 0
+    for record in tag_records:
+        print(f"record: {record}")
+        
+        if "$$" in record and sequence == 0:
+            track_uri += record.partition("$$")[2]
+            sequence += 1
+        elif sequence > 0 and sequence < 2:
+            track_uri += record
+            sequence += 1
+
+    print(f"track_uri: {track_uri}")
+    return track_uri
+
+
 def main():
+    print(f"Script started\n")
 
     get_spotify_devices()
 
     try:
+        uid_old = ""
+        
         while True:
-            uid = read_rfid()
+            try:
+                uid, tag_records = read_rfid()
+            except TypeError:
+                print("TypeError") 
 
-            if uid:
-                print(f"UID letto: {uid}")
+            if uid != 0 and uid != uid_old:
 
-                if uid != uid_old:
+                track_uri = get_uri_from_rfid_tag(tag_records)
+                if track_uri:
                     # Costruisci l'URI della traccia da riprodurre su Spotify
-                    track_uri = f"spotify:track:{''.join(str(i) for i in uid)}"
+                    track_uri = f"spotify:track:{track_uri}"
 
                     # Cerca il device target
                     device_id = get_spotify_target_device()
 
                     # Riproduce la traccia su Spotify
-                    track_uri = 'spotify:track:403vzOZN0tETDpvFipkNIL'
-                    play_track_on_device(track_uri, device_id)
-
-                    ui_old=uid
-
+                    # track_uri = 'spotify:track:403vzOZN0tETDpvFipkNIL'
+                    # play_track_on_device(track_uri, device_id)
+                    
+                    uid_old = uid
+                    #print(f"uid: {uid}")
+                    #print(f"uid_old: {uid_old}")
 
     except KeyboardInterrupt:
         GPIO.cleanup()
         print("Script interrotto")
 
     finally:
-        reader.cleanup() # Calls GPIO cleanup
+        rdr.cleanup() # Calls GPIO cleanup
 
 if __name__ == "__main__":
     main()
