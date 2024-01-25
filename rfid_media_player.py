@@ -25,7 +25,6 @@ util = rdr.util()
 
 def read_rfid():
     try:
-        print(f"Waiting for rfid tag")
 
         tag_records = []
         rdr.wait_for_tag()
@@ -65,9 +64,9 @@ def read_rfid():
 
 def get_spotify_devices():
     """ Restituisce un elenco di dispositivi disponibili su Spotify. """
-    #print("Dispositivi disponibili:")
+    print("Dispositivi disponibili:")
     devices = sp.devices()
-    #print(json.dumps(devices, indent=1))
+    print(json.dumps(devices, indent=1))
 
 def get_spotify_target_device():
     """ Restituisce l'id del device target """
@@ -84,10 +83,10 @@ def get_spotify_target_device():
 
 def play_track_on_device(track_uri, device):
     """ Riproduce una traccia su un dispositivo specifico. """
-    print("Start playing track" + track_uri)
+    print(f"Start playing track {track_uri}")
     sp.start_playback(uris=[track_uri], device_id=device)
     sleep(2)
-    sp.volume(30, sp_device_id)
+    sp.volume(20, sp_device_id)
 
 def bytes_to_utf8_string(byte_data):
     """ Rimuovi i byte nulli dalla fine dei dati """
@@ -95,10 +94,6 @@ def bytes_to_utf8_string(byte_data):
     try:
         # Decodifica i dati usando UTF-8
         clean_data = clean_data.decode('utf-8').rstrip('\x00')
-
-        # Pulisci schifezze
-        clean_data = clean_data.replace("QTen", "")
-        clean_data = clean_data.replace("Ten", "")
 
         return clean_data
     except UnicodeDecodeError:
@@ -109,14 +104,17 @@ def get_uri_from_rfid_tag(tag_records):
     #print(tag_records)
     sequence = 0
     for record in tag_records:
-        print(f"record: {record}")
+        #print(f"record: {record}")
         
         if "$$" in record and sequence == 0:
             track_uri += record.partition("$$")[2]
             sequence += 1
-        elif sequence > 0 and sequence < 2:
+        elif "$$" not in record and sequence > 0:
             track_uri += record
             sequence += 1
+        elif "$$" in record and sequence > 0:
+            track_uri += record.partition("$$")[0]
+            break
 
     print(f"track_uri: {track_uri}")
     return track_uri
@@ -127,16 +125,19 @@ def main():
 
     get_spotify_devices()
 
+    print(f"Waiting for rfid tag")
+
     try:
         uid_old = ""
-        
+        uid = ""
+
         while True:
             try:
                 uid, tag_records = read_rfid()
             except TypeError:
                 print("TypeError") 
 
-            if uid != 0 and uid != uid_old:
+            if uid and uid != uid_old:
 
                 track_uri = get_uri_from_rfid_tag(tag_records)
                 if track_uri:
@@ -148,11 +149,11 @@ def main():
 
                     # Riproduce la traccia su Spotify
                     # track_uri = 'spotify:track:403vzOZN0tETDpvFipkNIL'
-                    # play_track_on_device(track_uri, device_id)
+                    play_track_on_device(track_uri, device_id)
                     
                     uid_old = uid
-                    #print(f"uid: {uid}")
-                    #print(f"uid_old: {uid_old}")
+            else:
+                print("holding a card")
 
     except KeyboardInterrupt:
         GPIO.cleanup()

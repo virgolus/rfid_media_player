@@ -7,3 +7,6 @@ pip
 
 # Dependencies
 pip install -r requirements.txt
+
+# Raspberry as spotify connect device
+https://dtcooper.github.io/raspotify/
