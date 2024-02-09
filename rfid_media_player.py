@@ -21,9 +21,11 @@ sp_device_id=os.getenv('DEVICE_ID')
 # Set rfid reader
 rdr = RFID()
 util = rdr.util()
-# util.debug = True
+util.debug = False
 
 def read_rfid():
+    """ Read rfid card """
+
     try:
 
         tag_records = []
@@ -54,22 +56,20 @@ def read_rfid():
                                     tag_records.append(data)
                                 #else:
                                    # print(f"Errore durante la lettura del Blocco {block} del Settore {sector}")
-                        #else:
-                            #print(f"Non posso autenticare il Settore {sector}")
                     return (str(uid), tag_records)
-                #else:
-                    #print("Non posso selezionare la card con UID: " + str(uid))
     except TypeError:
         print("TypeError")       
 
 def get_spotify_devices():
-    """ Restituisce un elenco di dispositivi disponibili su Spotify. """
+    """ Get spotify connect devices from API """
+
     print("Dispositivi disponibili:")
     devices = sp.devices()
     print(json.dumps(devices, indent=1))
 
 def get_spotify_target_device():
-    """ Restituisce l'id del device target """
+    """ Get device id from device name in .env, searching trough devices """
+
     #print("Dispositivi disponibili:")
     devices = sp.devices()
     #print(json.dumps(devices, indent=1))
@@ -82,17 +82,19 @@ def get_spotify_target_device():
             return item['id']
 
 def play_track_on_device(track_uri, device):
-    """ Riproduce una traccia su un dispositivo specifico. """
+    """ Call Play track Spotify API """
+
     print(f"Start playing track {track_uri}")
     try:
         sp.start_playback(uris=[track_uri], device_id=device)
         sleep(2)
-        sp.volume(20, sp_device_id)
+        sp.volume(40, sp_device_id)
     except spotipy.exceptions.SpotifyException as e:
         print(e)
 
 def bytes_to_utf8_string(byte_data):
-    """ Rimuovi i byte nulli dalla fine dei dati """
+    """ Clean string readed from rfid tags """
+
     clean_data = bytes(byte for byte in byte_data if 32 <= byte <= 126)
     try:
         # Decodifica i dati usando UTF-8
@@ -103,6 +105,8 @@ def bytes_to_utf8_string(byte_data):
         return "Errore nella decodifica UTF-8"
 
 def get_uri_from_rfid_tag(tag_records):
+    """ Search track id. It's a string delimited by $$ """
+
     track_uri = ""
     #print(tag_records)
     sequence = 0
@@ -126,8 +130,10 @@ def get_uri_from_rfid_tag(tag_records):
 def main():
     print(f"Script started\n")
 
+    # Print spotify connect devices
     get_spotify_devices()
-    # Cerca il device target
+    
+    # Search id of target device
     device_id = get_spotify_target_device()
     if not device_id:
         print(f"Spotify device connect target NOT FOUND!")
@@ -159,11 +165,11 @@ def main():
                         play_track_on_device(track_uri, device_id)
                         uid_old = uid
             else:
-                print("holding a card")
+                print("Same rfid card")
 
     except KeyboardInterrupt:
         GPIO.cleanup()
-        print("Script interrotto")
+        print("Script terminated")
 
     finally:
         rdr.cleanup() # Calls GPIO cleanup
