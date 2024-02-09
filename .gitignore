@@ -1,2 +1,5 @@
 .env
 wpa_supplicant*
+env/
+__pycache__/
+.cache
