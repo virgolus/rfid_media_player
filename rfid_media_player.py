@@ -1,10 +1,11 @@
+import time
+from time import sleep
 import RPi.GPIO as GPIO
 from pirc522 import RFID
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import os
 from dotenv import load_dotenv
-from time import sleep, time
 import json
 import socket
 
@@ -55,9 +56,10 @@ def read_rfid():
                                     tag_records.append(data)
                                 #else:
                                    # print(f"Errore durante la lettura del Blocco {block} del Settore {sector}")
+                    time.sleep(2)
                     return (str(uid), tag_records)
     except TypeError:
-        print("TypeError")       
+        print("TypeError")
 
 def get_spotify_devices():
     """ Get spotify connect devices from API """
