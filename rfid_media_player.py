@@ -4,8 +4,9 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import os
 from dotenv import load_dotenv
-from time import sleep
+from time import sleep, time
 import json
+import socket
 
 load_dotenv()
 
@@ -20,8 +21,6 @@ sp_device_id=os.getenv('DEVICE_ID')
 
 # Set rfid reader
 rdr = RFID()
-util = rdr.util()
-util.debug = False
 
 def read_rfid():
     """ Read rfid card """
@@ -88,8 +87,10 @@ def play_track_on_device(track_uri, device):
     try:
         sp.start_playback(uris=[track_uri], device_id=device)
         sleep(2)
-        sp.volume(40, sp_device_id)
+        sp.volume(80, sp_device_id)
     except spotipy.exceptions.SpotifyException as e:
+        print(e)
+    except socket.timeout as e:
         print(e)
 
 def bytes_to_utf8_string(byte_data):
@@ -128,44 +129,38 @@ def get_uri_from_rfid_tag(tag_records):
 
 
 def main():
-    print(f"Script started\n")
-
-    # Print spotify connect devices
-    get_spotify_devices()
     
-    # Search id of target device
-    device_id = get_spotify_target_device()
-    if not device_id:
-        print(f"Spotify device connect target NOT FOUND!")
-    else:
-        print(f"Found spotify connect device with id {device_id}")
-
-    print(f"Waiting for rfid tag")
+    print(f"Script started\n")
+    device_id = find_device_id()
+    uid_old = ""
+    uid = ""
 
     try:
-        uid_old = ""
-        uid = ""
-
         while True:
-            try:
-                uid, tag_records = read_rfid()
-            except TypeError:
-                pass
+            if device_id:
 
-            if uid and uid != uid_old:
+                print(f"Waiting for rfid tag")
+                try:
+                    uid, tag_records = read_rfid()
+                except TypeError:
+                    pass
 
-                track_uri = get_uri_from_rfid_tag(tag_records)
-                if track_uri:
-                    # Costruisci l'URI della traccia da riprodurre su Spotify
-                    track_uri = f"spotify:track:{track_uri}"
+                if uid and uid != uid_old:
 
-                    # Riproduce la traccia su Spotify
-                    # track_uri = 'spotify:track:403vzOZN0tETDpvFipkNIL'
-                    if (track_uri):
-                        play_track_on_device(track_uri, device_id)
-                        uid_old = uid
+                    track_uri = get_uri_from_rfid_tag(tag_records)
+                    if track_uri:
+                        # Costruisci l'URI della traccia da riprodurre su Spotify
+                        track_uri = f"spotify:track:{track_uri}"
+
+                        # Riproduce la traccia su Spotify
+                        # track_uri = 'spotify:track:403vzOZN0tETDpvFipkNIL'
+                        if (track_uri):
+                            play_track_on_device(track_uri, device_id)
+                            uid_old = uid
+                else:
+                    print("Same rfid card")
             else:
-                print("Same rfid card")
+                find_device_id()
 
     except KeyboardInterrupt:
         GPIO.cleanup()
@@ -173,6 +168,28 @@ def main():
 
     finally:
         rdr.cleanup() # Calls GPIO cleanup
+
+def find_device_id():
+    """ Polling on getdevices from Spotify API """
+    while True:
+        try:
+            print(f"Try to find Spotify connect device ID")
+
+            # Print spotify connect devices
+            get_spotify_devices()
+        
+            # Search id of target device
+            device_id = get_spotify_target_device()
+            if not device_id:
+                print(f"Spotify device connect target NOT FOUND!")
+                time.sleep(5)
+            else:
+                print(f"Found spotify connect device with id {device_id}")
+                return device_id
+        except spotipy.exceptions.SpotifyException as e:
+            print(e)
+        except socket.timeout as e:
+            print(e)
 
 if __name__ == "__main__":
     main()
