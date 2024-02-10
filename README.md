@@ -15,6 +15,8 @@ python3.9 -m venv env
 source env/bin/activate
 pip install -r requirements.txt
 
+# Environment file
+Copy .env.template to .env and add required params
 
 # run
 On project directory:
