@@ -147,7 +147,6 @@ def print_song_info():
     trackName = track_info['item']['name']
     print(f"Playing {trackName}, from the album {album} by {artist}")
 
-
 def find_device_id():
     """ Polling on getdevices from Spotify API """
     while True:
@@ -215,7 +214,7 @@ def main():
 
     GPIO.setmode(GPIO.BOARD) # Use physical pin numbering
     GPIO.setup(btn_play_pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-    GPIO.add_event_detect(btn_play_pin, GPIO.FALLING, callback=btn_play_callback, bouncetime=200)
+    GPIO.add_event_detect(btn_play_pin, GPIO.FALLING, callback=btn_play_callback, bouncetime=500)
     
     global playing
     global progress_ms
