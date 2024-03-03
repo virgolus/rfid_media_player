@@ -1,5 +1,4 @@
 import time
-from time import sleep
 import RPi.GPIO as GPIO
 from pirc522 import RFID
 import spotipy
@@ -11,6 +10,7 @@ import socket
 import requests
 
 load_dotenv()
+GPIO.setwarnings(False)
 
 # Setup spotipy connection and auth
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=os.getenv('SP_CLIENT_ID'),
@@ -22,13 +22,13 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=os.getenv('SP_CLIENT_ID
 # Set rfid reader
 rdr = RFID()
 
-GPIO.setwarnings(False)
-
 btn_play_pin = 10
 btn_next_pin = 18
 
 playing = False
 progress_ms = 0
+retry_num = 0
+max_retry = 3 
 
 track_uri = ""
 device_id = ""
@@ -85,29 +85,42 @@ def get_spotify_target_device():
             #print(item['id'])
             return item['id']
 
-def play_track_on_device(track_uri, device_id):
+def play_track_on_device(track_uri, device_id, new):
     """ Call Play track Spotify API """
 
     try:
         global progress_ms
+        global playing
+        global retry_num
+        global max_retry
 
-        if progress_ms != 0:
+        if not new:
             print(f"Resume playing track {track_uri}")
             sp.start_playback(uris=[track_uri], device_id=device_id, position_ms=progress_ms)
-            progress_ms = 0
         else:
             print(f"Start playing track {track_uri}")
             sp.start_playback(uris=[track_uri], device_id=device_id)
             print_song_info()
         
         sp.volume(80, device_id)
-        
-        global playing
         playing = True
+
     except spotipy.exceptions.SpotifyException as e:
         print(e)
+        retry_play(track_uri, device_id, new)
     except socket.timeout as e:
         print(e)
+        retry_play(track_uri, device_id, new)
+    except requests.exceptions.RequestException as e:
+        print(e)
+        retry_play(track_uri, device_id, new)
+
+def retry_play(track_uri, device_id, new):
+    """ Spotify APIs are a pain in the ass, retry play if return an unattended 404 """
+    time.sleep(3)
+    if retry_num < max_retry:
+        play_track_on_device(track_uri, device_id, new)
+        retry_num = retry_num + 1
 
 def bytes_to_utf8_string(byte_data):
     """ Clean string readed from rfid tags """
@@ -190,7 +203,8 @@ def btn_play_callback(channel):
         if long_press:
             """ Button long press -> restart song"""
             progress_ms = 0
-            play_track_on_device(track_uri, device_id)
+            play_track_on_device(track_uri, device_id, True)
+            print("Restart song")
         elif not long_press and playing:
             """ If a song is playing, pause"""
             sp.pause_playback(device_id)
@@ -200,9 +214,17 @@ def btn_play_callback(channel):
             print("Pause song")
         else:
             """ If a song paused, resume"""
-            play_track_on_device(track_uri, device_id)
+            play_track_on_device(track_uri, device_id, False)
 
     time.sleep(0.1)
+
+def play_or_not(uid, uid_old):
+    global playing
+
+    if uid and uid != uid_old:
+        return True
+    else:
+        return False
 
 def main():
 
@@ -218,6 +240,7 @@ def main():
     
     global playing
     global progress_ms
+    global last_read
     global track_uri
 
     global device_id
@@ -234,8 +257,8 @@ def main():
                 except TypeError:
                     pass
 
-                if rfid_tag_detected:
-                    if uid and uid != uid_old:
+                if rfid_tag_detected:                    
+                    if play_or_not(uid, uid_old):
 
                         track_uri_str = get_uri_from_rfid_tag(tag_records)
                         if track_uri_str:
@@ -244,7 +267,7 @@ def main():
 
                             # Play track on device
                             if (track_uri):
-                                play_track_on_device(track_uri, device_id)
+                                play_track_on_device(track_uri, device_id, True)
                                 uid_old = uid
                                 rfid_tag_detected = False
                     else:
