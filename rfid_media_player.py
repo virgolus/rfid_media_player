@@ -5,10 +5,9 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import os
 from dotenv import load_dotenv
-import json
-import socket
 import requests
 
+""" Globals """
 load_dotenv()
 GPIO.setwarnings(False)
 
@@ -25,7 +24,8 @@ playing = False
 progress_ms = 0
 retry_num = 0
 max_retry = 3 
-last_rfid_tag_readed_ms = 0
+last_rfid_tag_readed_s = 0
+last_pause_btn_pressed_s = 0
 
 track_uri = ""
 device_id = ""
@@ -68,7 +68,6 @@ def read_rfid():
                                     # print(f"Sector {sector}, Block {block}: {data}")
 
                                     tag_records.append(data)
-                    time.sleep(0.1)
                     return (True, str(uid), tag_records)
     except TypeError:
         pass
@@ -96,7 +95,6 @@ def play_track_on_device(track_uri, device_id, new):
     try:
         global progress_ms
         global playing
-        global retry_num
         global max_retry
 
         if not new:
@@ -110,25 +108,31 @@ def play_track_on_device(track_uri, device_id, new):
         sp.volume(80, device_id)
         playing = True
 
-    except spotipy.exceptions.SpotifyException as e:
+    except requests.exceptions.HTTPError as e:
+        print("requests.exceptions.HTTPError!!!!!!")
         print(e)
-        retry_play(track_uri, device_id, new)
-    except socket.timeout as e:
-        print(e)
-        retry_play(track_uri, device_id, new)
     except requests.exceptions.RequestException as e:
+        print("requests.exceptions.RequestException!!!!!!")
+        print(e)
+        retry_play(track_uri, device_id, new)
+    except spotipy.exceptions.SpotifyException as e:
+        print("spotipy.exceptions.SpotifyException!!!!!!")
         print(e)
         retry_play(track_uri, device_id, new)
 
 def retry_play(track_uri, device_id, new):
     """ Spotify APIs are a pain in the ass, retry play if return an unattended 404 """
-    time.sleep(3)
+    global retry_num
+    global max_retry
+
     if retry_num < max_retry:
+        time.sleep(3)
         play_track_on_device(track_uri, device_id, new)
-        retry_num = retry_num + 1
+        retry_num += 1
     else:
         init_spotipy()
         find_device_id()
+        retry_num = 0
 
 def bytes_to_utf8_string(byte_data):
     """ Clean string readed from rfid tags """
@@ -181,10 +185,7 @@ def find_device_id():
             else:
                 print(f"Found spotify connect device with id {device_id}")
                 return device_id
-        except spotipy.exceptions.SpotifyException as e:
-            print(e)
-        except socket.timeout as e:
-            print(e)
+
         except requests.exceptions.RequestException as e:
             print(e)
         finally:
@@ -197,50 +198,55 @@ def btn_play_callback(channel):
     global progress_ms
     global playing
     global track_uri
-
+    global last_pause_btn_pressed_s
     long_press = False
 
-    time.sleep(0.1)
-
+    # Callback doesn't work well, added last button time pressed control
     if track_uri:
+
         start_time = time.time()
         while GPIO.input(channel) == GPIO.HIGH:
-            if time.time() - start_time >= 3:
+            print(time.time() - start_time)
+            if time.time() - start_time >= 1:
                 long_press = True
 
         if long_press:
             """ Button long press -> restart song"""
             progress_ms = 0
             play_track_on_device(track_uri, device_id, True)
-            playing = True
             print("Restart song")
-        elif not long_press and playing:
-            """ If a song is playing, pause"""
-            sp.pause_playback(device_id)
-            track_info = sp.current_user_playing_track()
-            progress_ms = track_info['progress_ms']
-            playing = False
-            print("Pause song")
-        else:
-            """ If a song paused, resume"""
-            play_track_on_device(track_uri, device_id, False)
 
-    time.sleep(0.1)
+        if (time.time() - last_pause_btn_pressed_s) > 0.5:
+            if not long_press and playing:
+                """ If a song is playing, pause"""
+                sp.pause_playback(device_id)
+                track_info = sp.current_user_playing_track()
+                progress_ms = track_info['progress_ms']
+                playing = False
+                print("Pause song")
+            else:
+                """ If a song paused, resume"""
+                play_track_on_device(track_uri, device_id, False)
 
-def play_or_not(uid, uid_old):
+        last_pause_btn_pressed_s = time.time()
 
-    print(uid == uid_old)
-    print(time.time() - last_rfid_tag_readed_ms > 5)
-    print(last_rfid_tag_readed_ms)
+def play_or_not(uid, uid_old, track_uri):
+    """ check the status of device and choose if play a track or not """
+    
+    # validate track uri
+    if len(track_uri) < 10:
+        print(f"Track uri not valid! -> {track_uri}")
+        return False
 
+    # tag uid changed or at least 5 second has passed
     if uid and uid != uid_old:
         return True
-    elif uid == uid_old and (time.time() - last_rfid_tag_readed_ms > 3):
+    elif uid == uid_old and (time.time() - last_rfid_tag_readed_s > 10):
         print("five second passed")
         return True
     else:
         return False
-
+    
 def main():
 
     print(f"Script started\n")
@@ -253,7 +259,7 @@ def main():
 
     GPIO.setmode(GPIO.BOARD) # Use physical pin numbering
     GPIO.setup(btn_play_pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-    GPIO.add_event_detect(btn_play_pin, GPIO.FALLING, callback=btn_play_callback, bouncetime=500)
+    GPIO.add_event_detect(btn_play_pin, GPIO.FALLING, callback=btn_play_callback, bouncetime=400)
     
     global playing
     global progress_ms
@@ -275,23 +281,23 @@ def main():
                     pass
 
                 if rfid_tag_detected:
-                    if play_or_not(uid, uid_old):
-                        
-                        track_uri_str = get_uri_from_rfid_tag(tag_records)
-                        if track_uri_str:
-                            # Build spotify URI
-                            track_uri = f"spotify:track:{track_uri_str}"
+                    track_uri_str = get_uri_from_rfid_tag(tag_records)
 
-                            # Play track on device
-                            if (track_uri):
-                                play_track_on_device(track_uri, device_id, True)
-                                uid_old = uid
-                                rfid_tag_detected = False
+                    if play_or_not(uid, uid_old, track_uri_str):
+
+                        # Build spotify URI
+                        track_uri = f"spotify:track:{track_uri_str}"
+
+                        # Play track on device
+                        if (track_uri):
+                            play_track_on_device(track_uri, device_id, True)
+                            uid_old = uid
+                            rfid_tag_detected = False
                     else:
                         print("Hold on rfid tag\n")
                     
-                    global last_rfid_tag_readed_ms
-                    last_rfid_tag_readed_ms = time.time()
+                    global last_rfid_tag_readed_s
+                    last_rfid_tag_readed_s = time.time()
             else:
                 device_id = find_device_id()
 
