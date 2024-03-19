@@ -3,3 +3,4 @@ wpa_supplicant*
 env/
 __pycache__/
 .cache/
+rfid_media_player.log

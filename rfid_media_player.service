@@ -4,7 +4,11 @@ Description=Rfid Media Player service
 [Service]
 User=virgolus
 WorkingDirectory=/home/virgolus/rfid_media_player/
-ExecStart=/home/virgolus/rfid_media_player/env/bin/python3 -m rfid_media_player
+#ExecStart=/home/virgolus/rfid_media_player/env/bin/python3 -m rfid_media_player
+ExecStart=/home/virgolus/rfid_media_player/env/bin/python3  /home/virgolus/rfid_media_player/rfid_media_player.py --serve-in-foreground
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rfid_media_player
 
 [Install]
 WantedBy=multi-user.target

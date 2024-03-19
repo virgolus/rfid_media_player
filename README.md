@@ -11,9 +11,11 @@ https://dtcooper.github.io/raspotify/
 
 # Env & Dependencies
 On project directory:
+```
 python3.9 -m venv env
 source env/bin/activate
 pip install -r requirements.txt
+```
 
 # Environment file
 Copy .env.template to .env and add required params
@@ -26,4 +28,13 @@ python rfid_media_player.py
 ```
 
 # Systemctl service
+copy service int systemd dir:
+```
 sudo cp rfid_media_player.service /usr/lib/systemd/system/
+sudo systemctl daemon-reload
+```
+Enable autostart
+```
+sudo systemctl enable rfid_media_player
+```
+
